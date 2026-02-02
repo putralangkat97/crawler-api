@@ -1,4 +1,4 @@
-FROM dunglas/frankenphp:1-alpine
+FROM dunglas/frankenphp:1.9.1-php8.4.15-alpine
 
 # Install system deps + PHP extensions
 RUN apk add --no-cache \
@@ -14,7 +14,7 @@ RUN apk add --no-cache \
     php84-pdo_mysql \
     php84-pdo_sqlite \
     php84-curl \
-    php84-mbstring \
+    php84-mbstring
 
 WORKDIR /app
 
