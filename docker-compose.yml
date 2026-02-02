@@ -11,10 +11,6 @@ services:
       CACHE_DRIVER: file
       SESSION_DRIVER: file
       TRUSTED_PROXIES: 0.0.0.0/0
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health || exit 1"]
-      interval: 5s
-      retries: 5
 
   caddy:
     image: caddy:2-alpine
