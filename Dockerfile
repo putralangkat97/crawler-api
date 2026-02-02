@@ -17,7 +17,8 @@ RUN install-php-extensions \
     mbstring \
     intl \
     zip \
-    bcmath
+    bcmath \
+    pcntl
 
 RUN curl -sS https://getcomposer.org/installer \
     | php -- --install-dir=/usr/local/bin --filename=composer
