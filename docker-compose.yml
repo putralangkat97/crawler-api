@@ -2,30 +2,34 @@ services:
   app:
     build: .
     restart: unless-stopped
-    # NO PORT expose, Caddy reverse proxy internal
     volumes:
       - ./storage:/app/storage
       - ./database:/app/database
     environment:
-      - APP_ENV=production
-      - APP_DEBUG=false
-      - CACHE_DRIVER=file
-      - SESSION_DRIVER=file
-      - TRUSTED_PROXIES=0.0.0.0/0
+      APP_ENV: production
+      APP_DEBUG: "false"
+      CACHE_DRIVER: file
+      SESSION_DRIVER: file
+      TRUSTED_PROXIES: 0.0.0.0/0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health || exit 1"]
+      interval: 5s
+      retries: 5
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"  # Auto HTTPS!
+      - "443:443"
     volumes:
       - ./dockerfiles/Caddyfile:/etc/caddy/Caddyfile
       - ./public:/app/public:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 
 volumes:
   caddy_data:

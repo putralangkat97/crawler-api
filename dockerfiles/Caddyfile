@@ -7,8 +7,7 @@ crawler.anggit.dev {
     }
 
     handle /storage/* {
-        file_server {
-            root /app/public
-        }
+        root * /app/public
+        file_server
     }
 }

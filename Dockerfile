@@ -27,12 +27,11 @@ WORKDIR /app
 
 COPY . .
 
-# IMPORTANT: this composer now uses FrankenPHP's PHP
 RUN composer install
 
 RUN chown -R www-data:www-data storage bootstrap/cache database
 
-RUN php artisan config:cache && php artisan route:cache
+RUN php artisan config:clear && php artisan config:cache && php artisan route:cache
 
 EXPOSE 8000
 CMD ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]
