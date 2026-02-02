@@ -21,7 +21,7 @@ WORKDIR /app
 COPY . .
 
 # Install deps
-RUN composer install --no-dev --optimize-autoloader --no-scripts
+RUN composer install --no-dev --optimize-autoloader --no-scripts -vvv
 
 # Permission
 RUN chown -R www-data:www-data storage bootstrap/cache database
