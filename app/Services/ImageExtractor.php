@@ -6,7 +6,6 @@ use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Component\DomCrawler\UriResolver;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Client\Pool;
-use Illuminate\Support\Str;
 
 class ImageExtractor
 {
@@ -26,6 +25,11 @@ class ImageExtractor
         $results = [];
 
         foreach ($responses as $url => $response) {
+            // Skip if response is an exception (connection error, timeout, etc.)
+            if ($response instanceof \Throwable) {
+                continue;
+            }
+
             if (!$response->successful()) {
                 continue;
             }
