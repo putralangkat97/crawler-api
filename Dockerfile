@@ -1,32 +1,32 @@
-FROM dunglas/frankenphp:1.9.1-php8.4.15-alpine
+FROM dunglas/frankenphp:1-php8.4-alpine
 
-# Install system deps + PHP extensions
-RUN apk add --no-cache \
-    composer \
-    php84-session \
-    php84-fileinfo \
-    php84-tokenizer \
-    php84-dom \
-    php84-xml \
-    php84-opcache \
-    php84-pdo \
-    php84-pdo_pgsql \
-    php84-pdo_mysql \
-    php84-pdo_sqlite \
-    php84-curl \
-    php84-mbstring
+# Install Composer + PHP extensions for FrankenPHP
+RUN apk add --no-cache git \
+ && install-php-extensions \
+    session \
+    fileinfo \
+    tokenizer \
+    dom \
+    xml \
+    opcache \
+    pdo \
+    pdo_mysql \
+    pdo_pgsql \
+    pdo_sqlite \
+    curl \
+    mbstring \
+    intl \
+    zip \
+    bcmath
 
 WORKDIR /app
 
 COPY . .
 
-# Install deps
-RUN composer install --no-dev --optimize-autoloader --no-scripts -vvv
+RUN composer install --no-dev --optimize-autoloader --no-scripts
 
-# Permission
 RUN chown -R www-data:www-data storage bootstrap/cache database
 
-# Optimize
 RUN php artisan config:cache && php artisan route:cache
 
 EXPOSE 8000
