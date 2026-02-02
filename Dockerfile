@@ -1,7 +1,20 @@
 FROM dunglas/frankenphp:1-alpine
 
-# Install Composer
-RUN apk add --no-cache composer
+# Install system deps + PHP extensions
+RUN apk add --no-cache \
+    composer \
+    php84-session \
+    php84-fileinfo \
+    php84-tokenizer \
+    php84-dom \
+    php84-xml \
+    php84-opcache \
+    php84-pdo \
+    php84-pdo_pgsql \
+    php84-pdo_mysql \
+    php84-pdo_sqlite \
+    php84-curl \
+    php84-mbstring \
 
 WORKDIR /app
 
