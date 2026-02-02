@@ -27,7 +27,7 @@ WORKDIR /app
 COPY . .
 
 # IMPORTANT: this composer now uses FrankenPHP's PHP
-RUN composer install --no-dev --optimize-autoloader --no-scripts
+RUN composer install
 
 RUN chown -R www-data:www-data storage bootstrap/cache database
 
