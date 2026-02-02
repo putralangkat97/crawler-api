@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\ImageExtractor;
 use Illuminate\Http\Request;
 
-class ScrapeController extends Controller
+class ScrapeImageController extends Controller
 {
     public function __invoke(Request $request, ImageExtractor $extractor)
     {
