@@ -2,17 +2,16 @@
 
 namespace App\Services;
 
-use Symfony\Component\DomCrawler\Crawler;
-use Symfony\Component\DomCrawler\UriResolver;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Http\Client\Pool;
-use fivefilters\Readability\Readability;
 use fivefilters\Readability\Configuration;
 use fivefilters\Readability\ParseException;
+use fivefilters\Readability\Readability;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use League\HTMLToMarkdown\HtmlConverter;
 use Spatie\Browsershot\Browsershot;
 use Spatie\PdfToText\Pdf;
+use Symfony\Component\DomCrawler\Crawler;
+use Symfony\Component\DomCrawler\UriResolver;
 
 class SpiderCrawler
 {
@@ -32,9 +31,9 @@ class SpiderCrawler
     {
         $cacheEnabled = $options['cache'] ?? true;
         $cacheTtl = $options['cache_ttl'] ?? config('scraper.cache_ttl', 3600);
-        
+
         // Generate cache key based on URL and options
-        $cacheKey = 'scrape:' . md5(json_encode([
+        $cacheKey = 'scrape:'.md5(json_encode([
             'url' => $url,
             'request' => $options['request'] ?? 'smart',
             'return_format' => $options['return_format'] ?? 'markdown',
@@ -46,12 +45,12 @@ class SpiderCrawler
         }
 
         // Fetch and process the page
-        $sessionId = $options['session'] ?? false ? md5($url . time()) : null;
+        $sessionId = $options['session'] ?? false ? md5($url.time()) : null;
         $cookies = $sessionId ? Cache::get("session:{$sessionId}:cookies", []) : [];
 
         $response = $this->fetchUrl($url, $options, $cookies);
-        
-        if (!$response['success']) {
+
+        if (! $response['success']) {
             return $response;
         }
 
@@ -70,8 +69,8 @@ class SpiderCrawler
         }
 
         // Determine TTL based on content type
-        $ttl = $this->isPdf($response['content_type']) 
-            ? config('scraper.cache_ttl_pdf', 86400) 
+        $ttl = $this->isPdf($response['content_type'])
+            ? config('scraper.cache_ttl_pdf', 86400)
             : $cacheTtl;
 
         // Cache the result
@@ -87,13 +86,17 @@ class SpiderCrawler
      */
     public function crawlSite(string $startUrl, array $options = []): array
     {
-        $crawlId = md5($startUrl . time());
+        $crawlId = md5($startUrl.time());
         $maxDepth = $options['depth'] ?? config('scraper.crawl_depth', 2);
         $maxLimit = $options['limit'] ?? config('scraper.crawl_limit', 50);
-        
+
         // If depth or limit is 0, treat as unlimited (but cap at safe values)
-        if ($maxDepth === 0) $maxDepth = 10;
-        if ($maxLimit === 0) $maxLimit = 1000;
+        if ($maxDepth === 0) {
+            $maxDepth = 10;
+        }
+        if ($maxLimit === 0) {
+            $maxLimit = 1000;
+        }
 
         $baseDomain = parse_url($startUrl, PHP_URL_HOST);
         $results = [];
@@ -102,10 +105,10 @@ class SpiderCrawler
         // Initialize Redis-backed queue and tracking
         Cache::put("crawl:{$crawlId}:queue", [$startUrl], 3600);
         Cache::put("crawl:{$crawlId}:depth", [$startUrl => 0], 3600);
-        
+
         while ($count < $maxLimit) {
             $queue = Cache::get("crawl:{$crawlId}:queue", []);
-            
+
             if (empty($queue)) {
                 break;
             }
@@ -128,7 +131,7 @@ class SpiderCrawler
 
             // Scrape the page
             $pageResult = $this->scrapePage($currentUrl, $options);
-            
+
             if ($pageResult['success'] ?? false) {
                 $results[] = $pageResult;
                 $count++;
@@ -205,7 +208,7 @@ class SpiderCrawler
     protected function fetchUrl(string $url, array $options, array $cookies = []): array
     {
         $requestType = $options['request'] ?? 'smart';
-        
+
         // Try HTTP first for smart/http modes
         if (in_array($requestType, ['http', 'smart'])) {
             $response = Http::withHeaders($this->headers)
@@ -213,12 +216,15 @@ class SpiderCrawler
                 ->connectTimeout(10)
                 ->get($url);
 
+            /** @disregard P1013 */
             if ($response->successful()) {
+                /** @disregard P1013 */
                 $html = $response->body();
+                /** @disregard P1013 */
                 $contentType = $response->header('Content-Type') ?? '';
 
                 // Smart mode: check if HTML looks incomplete
-                if ($requestType === 'smart' && !$this->looksLikeHtmlPage($html)) {
+                if ($requestType === 'smart' && ! $this->looksLikeHtmlPage($html)) {
                     $jsHtml = $this->renderJS($url, $options, $cookies);
                     if ($jsHtml) {
                         return [
@@ -232,6 +238,7 @@ class SpiderCrawler
                     }
                 }
 
+                /** @disregard P1013 */
                 return [
                     'success' => true,
                     'html' => $html,
@@ -255,9 +262,10 @@ class SpiderCrawler
                 }
             }
 
+            /** @disregard P1013 */
             return [
                 'success' => false,
-                'error' => $response->status() . ': ' . $response->reason(),
+                'error' => $response->status().': '.$response->reason(),
             ];
         }
 
@@ -391,7 +399,7 @@ class SpiderCrawler
         } catch (\Exception $e) {
             return [
                 'success' => false,
-                'error' => 'Failed to extract PDF text: ' . $e->getMessage(),
+                'error' => 'Failed to extract PDF text: '.$e->getMessage(),
             ];
         }
     }
@@ -429,7 +437,7 @@ class SpiderCrawler
         // Cannot convert binary to markdown/text
         return [
             'success' => false,
-            'error' => 'Cannot convert binary content to ' . $format . ' format. Use return_format=bytes or empty instead.',
+            'error' => 'Cannot convert binary content to '.$format.' format. Use return_format=bytes or empty instead.',
         ];
     }
 
@@ -447,13 +455,13 @@ class SpiderCrawler
     protected function isBinary(string $contentType): bool
     {
         $binaryTypes = ['image/', 'video/', 'audio/', 'application/octet-stream', 'application/zip'];
-        
+
         foreach ($binaryTypes as $type) {
             if (str_contains(strtolower($contentType), $type)) {
                 return true;
             }
         }
-        
+
         return false;
     }
 
@@ -466,104 +474,68 @@ class SpiderCrawler
         $limit = $params['limit'] ?? 1;
         $requestType = $params['request'] ?? 'smart';
         $format = $params['format'] ?? 'markdown';
+        $cacheEnabled = $params['cache'] ?? true;
+        $cacheTtl = $params['cache_ttl'] ?? config('scraper.cache_ttl', 3600);
 
-        if (!$url) {
+        if (! $url) {
             return ['success' => false, 'error' => 'URL required', 'data' => []];
         }
 
         $urls = is_array($url) ? $url : [$url];
         $urls = array_values(array_slice($urls, 0, $limit));
 
-        // 1) Fetch HTML via HTTP (pool)
-        $responses = Http::pool(function (Pool $pool) use ($urls) {
-            return collect($urls)->map(fn ($u) =>
-                $pool->as($u)
-                    ->timeout(20)
-                    ->connectTimeout(10)
-                    ->withHeaders($this->headers)
-                    ->get($u)
-            )->all();
-        });
-
         $results = [];
+        $options = [
+            'request' => $requestType,
+            'return_format' => $format,
+            'metadata' => true,
+            'cache' => $cacheEnabled,
+            'cache_ttl' => $cacheTtl,
+        ];
 
-        foreach ($responses as $originalUrl => $response) {
-            // A) Jika HTTP gagal
-            if (!$response->successful()) {
-                // Kalau request=chrome, kita bisa coba JS render sebagai fallback
-                if ($requestType === 'chrome') {
-                    $html = $this->renderJS($originalUrl, [], []);
-                    if (!$html) {
-                        $results[] = [
-                            'url' => $originalUrl,
-                            'success' => false,
-                            'error' => $response->status() . ': ' . $response->reason(),
-                        ];
-                        continue;
-                    }
+        foreach ($urls as $originalUrl) {
+            $result = $this->scrapePage($originalUrl, $options);
 
-                    $data = $this->processPage($html, $originalUrl, $format);
-                    $results[] = $this->formatSuccess($data);
-                    continue;
-                }
-
+            if (! ($result['success'] ?? false)) {
                 $results[] = [
                     'url' => $originalUrl,
                     'success' => false,
-                    'error' => $response->status() . ': ' . $response->reason(),
+                    'error' => $result['error'] ?? 'Request failed',
                 ];
+
                 continue;
             }
 
-            if ($this->isPdfResponse($response, $originalUrl)) {
-                try {
-                    $text = $this->pdfToTextFromUrl($originalUrl);
+            $sourceType = $result['source_type'] ?? 'html';
 
-                    $results[] = [
-                        'url' => $originalUrl,
-                        'success' => true,
-                        'title' => basename(parse_url($originalUrl, PHP_URL_PATH) ?? 'document.pdf'),
-                        'description' => '',
-                        'content' => ($params['format'] ?? 'markdown') === 'markdown'
-                            ? $this->pdfTextToMarkdown($text, $originalUrl)
-                            : $text,
-                        'metadata' => [
-                            'content_type' => $response->header('Content-Type'),
-                            'source_type' => 'pdf',
-                        ],
-                        'links' => [],
-                        'images' => [],
-                    ];
-                } catch (\Throwable $e) {
-                    $results[] = [
-                        'url' => $originalUrl,
-                        'success' => false,
-                        'error' => 'PDF parse failed: ' . $e->getMessage(),
-                    ];
-                }
+            if ($sourceType === 'pdf') {
+                $results[] = [
+                    'url' => $originalUrl,
+                    'success' => true,
+                    'title' => basename(parse_url($originalUrl, PHP_URL_PATH) ?? 'document.pdf'),
+                    'description' => '',
+                    'content' => $result['content'] ?? '',
+                    'metadata' => [
+                        'content_type' => $result['content_type'] ?? 'application/pdf',
+                        'source_type' => 'pdf',
+                    ],
+                    'links' => [],
+                    'images' => [],
+                ];
+
                 continue;
             }
 
-            // B) HTTP sukses
-            $html = $response->body();
+            $data = [
+                'url' => $result['url'] ?? $originalUrl,
+                'title' => $result['title'] ?? '',
+                'description' => $result['description'] ?? '',
+                'content' => $result['content'] ?? '',
+                'metadata' => $result['metadata'] ?? [],
+                'links' => $result['links'] ?? [],
+                'images' => $result['images'] ?? [],
+            ];
 
-            // smart: render JS hanya jika HTML tampak tidak “berisi” (SPA / blocked / empty)
-            if ($requestType === 'smart' && !$this->looksLikeHtmlPage($html)) {
-                $jsHtml = $this->renderJS($originalUrl, [], []);
-                if ($jsHtml) {
-                    $html = $jsHtml;
-                }
-            }
-
-            // chrome: selalu render JS (tapi tetap boleh pakai HTML HTTP sebagai backup jika chrome fail)
-            if ($requestType === 'chrome') {
-                $jsHtml = $this->renderJS($originalUrl, [], []);
-                if ($jsHtml) {
-                    $html = $jsHtml;
-                }
-            }
-
-            $data = $this->processPage($html, $originalUrl, $format);
             $results[] = $this->formatSuccess($data);
         }
 
@@ -591,7 +563,7 @@ class SpiderCrawler
     protected function processPage(string $html, string $url, string $format): array
     {
         // Readability.php (FiveFilters)
-        $config = new Configuration();
+        $config = new Configuration;
         $config->setFixRelativeURLs(true);
         $config->setOriginalURL($url);
 
@@ -639,6 +611,7 @@ class SpiderCrawler
 
         $links = $dom->filter('a[href]')->each(function ($node) use ($url) {
             $href = $node->attr('href');
+
             return $href ? UriResolver::resolve($href, $url) : null;
         });
         $links = array_values(array_filter(array_unique($links)));
@@ -660,7 +633,6 @@ class SpiderCrawler
         ];
     }
 
-
     protected function toMarkdown(string $html): string
     {
         $converter = new HtmlConverter([
@@ -669,6 +641,7 @@ class SpiderCrawler
 
         $md = $converter->convert($html); // HTML -> Markdown [web:258]
         $md = preg_replace("/\n{3,}/", "\n\n", $md);
+
         return trim($md);
     }
 
@@ -683,12 +656,12 @@ class SpiderCrawler
                 ->timeout(60);
 
             // Add cookies if provided (session support)
-            if (!empty($cookies)) {
+            if (! empty($cookies)) {
                 $browsershot->setOption('cookies', $cookies);
             }
 
             // Wait for specific selector if provided
-            if (!empty($options['wait_for'])) {
+            if (! empty($options['wait_for'])) {
                 $browsershot->waitForFunction("document.querySelector('{$options['wait_for']}') !== null");
             }
 
@@ -696,7 +669,7 @@ class SpiderCrawler
             $html = $browsershot->bodyHtml();
 
             // Perform scrolling if requested (infinite scroll support)
-            if (!empty($options['scroll']) && $options['scroll'] > 0) {
+            if (! empty($options['scroll']) && $options['scroll'] > 0) {
                 $scrollDuration = $options['scroll']; // in milliseconds
                 $scrollScript = "
                     (async () => {
@@ -713,7 +686,7 @@ class SpiderCrawler
                         window.scrollTo(0, document.body.scrollHeight);
                     })();
                 ";
-                
+
                 // Re-render with scrolling
                 $browsershot = Browsershot::url($url)
                     ->userAgent($this->headers['User-Agent'])
@@ -721,11 +694,11 @@ class SpiderCrawler
                     ->noSandbox()
                     ->timeout(60);
 
-                if (!empty($cookies)) {
+                if (! empty($cookies)) {
                     $browsershot->setOption('cookies', $cookies);
                 }
 
-                if (!empty($options['wait_for'])) {
+                if (! empty($options['wait_for'])) {
                     $browsershot->waitForFunction("document.querySelector('{$options['wait_for']}') !== null");
                 }
 
@@ -743,7 +716,10 @@ class SpiderCrawler
     {
         return $dom->filter('img')->each(function ($node) use ($baseUrl) {
             $src = $node->attr('src') ?? $node->attr('data-src') ?? $node->attr('data-lazy-src');
-            if (!$src) return null;
+            if (! $src) {
+                return null;
+            }
+
             return UriResolver::resolve($src, $baseUrl);
         });
     }
@@ -757,6 +733,7 @@ class SpiderCrawler
         if (str_contains($h, '<html') || str_contains($h, '<body') || str_contains($h, '<title')) {
             return true;
         }
+
         return strlen(trim(strip_tags($html))) > 200;
     }
 
@@ -767,7 +744,7 @@ class SpiderCrawler
 
         // Default cleaning (untuk semua situs)
         $articleHtml = $this->stripBadNodes($articleHtml, [
-            'script', 'style', 'noscript', 'iframe'
+            'script', 'style', 'noscript', 'iframe',
         ]);
 
         // Wikipedia-specific cleaning
@@ -807,27 +784,33 @@ class SpiderCrawler
 
         foreach ($removeXPaths as $q) {
             $nodes = $xp->query($q);
-            if (!$nodes) continue;
+            if (! $nodes) {
+                continue;
+            }
             foreach (iterator_to_array($nodes) as $node) {
-                if ($node && $node->parentNode) $node->parentNode->removeChild($node);
+                if ($node && $node->parentNode) {
+                    $node->parentNode->removeChild($node);
+                }
             }
         }
 
         // Strip attribute yang bikin noisy (id/class/style/data-*/typeof/about)
-        $stripAttrs = ['class','id','style','typeof','about','resource','rel','data-mw','data-*'];
-        $all = $xp->query("//*[@*]");
+        $stripAttrs = ['class', 'id', 'style', 'typeof', 'about', 'resource', 'rel', 'data-mw', 'data-*'];
+        $all = $xp->query('//*[@*]');
         if ($all) {
             foreach ($all as $el) {
-                if (!$el instanceof \DOMElement) continue;
+                if (! $el instanceof \DOMElement) {
+                    continue;
+                }
 
                 // hapus attribute generik
                 foreach (iterator_to_array($el->attributes) as $attr) {
                     $name = $attr->nodeName;
 
                     $isData = str_starts_with($name, 'data-');
-                    $isKeep = in_array($name, ['href','src','alt','title'], true); // keep link/image attrs
+                    $isKeep = in_array($name, ['href', 'src', 'alt', 'title'], true); // keep link/image attrs
 
-                    if (!$isKeep && ($isData || in_array($name, ['class','id','style','typeof','about','resource','rel'], true))) {
+                    if (! $isKeep && ($isData || in_array($name, ['class', 'id', 'style', 'typeof', 'about', 'resource', 'rel'], true))) {
                         $el->removeAttribute($name);
                     }
                 }
@@ -844,6 +827,7 @@ class SpiderCrawler
         }
 
         libxml_clear_errors();
+
         return $clean;
     }
 
@@ -857,9 +841,13 @@ class SpiderCrawler
         $xp = new \DOMXPath($dom);
         foreach ($tags as $tag) {
             $nodes = $xp->query("//{$tag}");
-            if (!$nodes) continue;
+            if (! $nodes) {
+                continue;
+            }
             foreach (iterator_to_array($nodes) as $node) {
-                if ($node && $node->parentNode) $node->parentNode->removeChild($node);
+                if ($node && $node->parentNode) {
+                    $node->parentNode->removeChild($node);
+                }
             }
         }
 
@@ -872,6 +860,7 @@ class SpiderCrawler
         }
 
         libxml_clear_errors();
+
         return $clean;
     }
 
@@ -881,12 +870,14 @@ class SpiderCrawler
 
         $dom = new \DOMDocument('1.0', 'UTF-8');
         // trik encoding supaya DOMDocument lebih aman parse UTF-8 [web:292]
-        $dom->loadHTML('<?xml encoding="utf-8" ?>' . $fullHtml, LIBXML_NOERROR | LIBXML_NOWARNING);
+        $dom->loadHTML('<?xml encoding="utf-8" ?>'.$fullHtml, LIBXML_NOERROR | LIBXML_NOWARNING);
 
         $xp = new \DOMXPath($dom);
 
         $root = $xp->query("//*[@id='mw-content-text']//*[contains(@class,'mw-parser-output')][1]")->item(0);
-        if (!$root) return '';
+        if (! $root) {
+            return '';
+        }
 
         // buang noise dalam root
         $remove = $xp->query(
@@ -900,7 +891,9 @@ class SpiderCrawler
         );
 
         foreach (iterator_to_array($remove ?? []) as $n) {
-            if ($n && $n->parentNode) $n->parentNode->removeChild($n);
+            if ($n && $n->parentNode) {
+                $n->parentNode->removeChild($n);
+            }
         }
 
         // ambil hanya node “artikel”
@@ -909,30 +902,37 @@ class SpiderCrawler
 
         foreach (iterator_to_array($nodes ?? []) as $n) {
             $chunk = $dom->saveHTML($n);
-            if (strlen(trim(strip_tags($chunk))) < 5) continue;
+            if (strlen(trim(strip_tags($chunk))) < 5) {
+                continue;
+            }
             $out .= $chunk;
         }
         $out .= '</div>';
 
         libxml_clear_errors();
+
         return $out;
     }
 
     protected function isPdfResponse($response, string $url): bool
     {
         $ct = strtolower((string) $response->header('Content-Type')); // e.g. application/pdf
-        if (str_contains($ct, 'application/pdf')) return true;
+        if (str_contains($ct, 'application/pdf')) {
+            return true;
+        }
 
         // fallback: dari ekstensi URL
         $path = strtolower(parse_url($url, PHP_URL_PATH) ?? '');
+
         return str_ends_with($path, '.pdf');
     }
 
     protected function pdfToTextFromUrl(string $url): string
     {
+        /** @disregard P1013 */
         $bin = Http::withHeaders($this->headers)->timeout(30)->get($url)->body();
 
-        $tmp = tempnam(sys_get_temp_dir(), 'pdf_') . '.pdf';
+        $tmp = tempnam(sys_get_temp_dir(), 'pdf_').'.pdf';
         file_put_contents($tmp, $bin);
 
         try {
@@ -944,7 +944,7 @@ class SpiderCrawler
 
     protected function pdfTextToMarkdown(string $text, string $url): string
     {
-        $text = trim(preg_replace("/[ \t]+/", " ", $text));
+        $text = trim(preg_replace("/[ \t]+/", ' ', $text));
         $text = trim(preg_replace("/\n{3,}/", "\n\n", $text));
 
         return "# PDF Document\n\nSource: {$url}\n\n---\n\n{$text}";

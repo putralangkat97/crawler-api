@@ -15,6 +15,8 @@ class SpiderController extends Controller
             'limit' => 'sometimes|integer|min:1|max:50',
             'request' => 'sometimes|in:http,chrome,smart',
             'format' => 'sometimes|in:markdown,text,html',
+            'cache' => 'sometimes|boolean',
+            'cache_ttl' => 'sometimes|integer|min:0|max:86400',
         ]);
 
         $result = $crawler->scrape($params);

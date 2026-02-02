@@ -2,10 +2,10 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Client\Pool;
+use Illuminate\Support\Facades\Http;
 use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Component\DomCrawler\UriResolver;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Http\Client\Pool;
 
 class ImageExtractor
 {
@@ -18,8 +18,7 @@ class ImageExtractor
         $blockGifs = $blockGifs ?? config('scraper.block_gifs', true);
         $promptFilter = $promptFilter ?? config('scraper.prompt_filter_enabled', true);
 
-        $responses = Http::pool(fn (Pool $pool) => 
-            collect($urls)->map(fn($url) => $pool->as($url)->get($url))->all()
+        $responses = Http::pool(fn (Pool $pool) => collect($urls)->map(fn ($url) => $pool->as($url)->get($url))->all()
         );
 
         $results = [];
@@ -30,12 +29,12 @@ class ImageExtractor
                 continue;
             }
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 continue;
             }
 
             $images = $this->extractFromHtml($response->body(), $url, $blockGifs, $prompt, $promptFilter);
-            
+
             $results[] = [
                 'url' => $url,
                 'images' => $images,
@@ -62,20 +61,21 @@ class ImageExtractor
             $meta_title = trim($meta_title_nodes->first()->attr('content') ?? '');
         }
 
-        $page_context = trim($meta_title . ' ' . $page_title);
+        $page_context = trim($meta_title.' '.$page_title);
 
         // 1. Prioritas tinggi: og:image, twitter:image
         $social_images = $crawler->filter('meta[property="og:image"], meta[name="twitter:image"]')
             ->each(function (Crawler $node) use ($base_url) {
                 $content = $node->attr('content');
+
                 return $content ? UriResolver::resolve($content, $base_url) : null;
             });
 
         // 2. img tags
         $img_images = $crawler->filter('img')->each(function (Crawler $node) use ($base_url) {
             $src = $node->attr('src') ?? $node->attr('data-src') ?? $node->attr('data-lazy-src');
-            
-            if (!$src) {
+
+            if (! $src) {
                 return null;
             }
 
@@ -93,18 +93,18 @@ class ImageExtractor
         // Gabung semua
         $all_images = [];
         foreach ($social_images as $image_url) {
-            if (!$image_url) {
+            if (! $image_url) {
                 continue;
             }
             $all_images[$image_url] = $page_context;
         }
         foreach ($img_images as $image) {
-            if (!is_array($image) || empty($image['url'])) {
+            if (! is_array($image) || empty($image['url'])) {
                 continue;
             }
 
             $existing = $all_images[$image['url']] ?? '';
-            $context = trim($existing . ' ' . ($image['context'] ?? ''));
+            $context = trim($existing.' '.($image['context'] ?? ''));
             $all_images[$image['url']] = $context;
         }
 
@@ -112,7 +112,7 @@ class ImageExtractor
         $scored_images = [];
         foreach ($all_images as $image_url => $context) {
             $score = $this->scoreImage($image_url, $base_url, $blockGifs, $prompt, $context, $promptFilter);
-            
+
             if ($score > 0) { // skip junk (score 0)
                 $scored_images[] = [
                     'url' => $image_url,
@@ -122,10 +122,10 @@ class ImageExtractor
         }
 
         // Sort by score desc, ambil top N
-        usort($scored_images, fn($a, $b) => $b['score'] <=> $a['score']);
-        
+        usort($scored_images, fn ($a, $b) => $b['score'] <=> $a['score']);
+
         return array_slice(
-            array_column($scored_images, 'url'), 
+            array_column($scored_images, 'url'),
             0, config('scraper.max_images_per_url', 5)
         );
     }
@@ -150,10 +150,10 @@ class ImageExtractor
         // Filter by query string size parameters (e.g., ?w=40&h=40)
         if ($query) {
             parse_str($query, $params);
-            if (isset($params['w']) && (int)$params['w'] <= 150) {
+            if (isset($params['w']) && (int) $params['w'] <= 150) {
                 return 0;
             }
-            if (isset($params['h']) && (int)$params['h'] <= 150) {
+            if (isset($params['h']) && (int) $params['h'] <= 150) {
                 return 0;
             }
         }
@@ -161,8 +161,8 @@ class ImageExtractor
         // Prompt filtering (only keep images matching prompt keywords)
         if ($promptFilter) {
             $prompt_keywords = $this->promptKeywords($prompt);
-            if (!empty($prompt_keywords)) {
-                $haystack = strtolower($url . ' ' . $context);
+            if (! empty($prompt_keywords)) {
+                $haystack = strtolower($url.' '.$context);
                 $matches = 0;
                 foreach ($prompt_keywords as $keyword) {
                     if (str_contains($haystack, $keyword)) {
@@ -196,7 +196,7 @@ class ImageExtractor
             if ($width > 600 || $height > 400) {
                 $score += 8;
             }
-            
+
             // Penalize extreme aspect ratios (stretched banners/spacers)
             if ($height > 0) {
                 $ratio = $width / $height;
@@ -222,7 +222,7 @@ class ImageExtractor
 
     protected function promptKeywords(?string $prompt): array
     {
-        if (!$prompt) {
+        if (! $prompt) {
             return [];
         }
 
@@ -312,8 +312,8 @@ class ImageExtractor
         }
 
         // SVG icons (kecuali yang besar)
-        if (str_ends_with(strtolower($path), '.svg') 
-            && !preg_match('/-(\d{3,})[-x](\d{2,})\.svg/', $path)) {
+        if (str_ends_with(strtolower($path), '.svg')
+            && ! preg_match('/-(\d{3,})[-x](\d{2,})\.svg/', $path)) {
             return true;
         }
 
