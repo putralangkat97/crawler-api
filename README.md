@@ -1,59 +1,348 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Production-Grade Scrape + Crawl API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A Laravel 12 + Octane + FrankenPHP scraping API optimized for **100k users/day**, featuring secure SSRF protection, async crawling, multi-queue isolation, R2 storage with presigned URLs, and external renderer integration.
 
-## About Laravel
+## Architecture Overview
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- **Synchronous Scraping** (`POST /v1/scrape`): Returns results immediately with full presigned URLs for large content/bytes.
+- **Asynchronous Crawling** (`POST /v1/crawl`): Enqueues BFS-based crawl jobs with multi-queue isolation (seed/http/chrome/store/cleanup).
+- **External Renderer**: Bun + Playwright microservice for JS-heavy pages; circuit breaker prevents cascading failures.
+- **R2 Storage**: Cloudflare R2 (S3-compatible) for large text content and binary outputs; presigned URLs generated at response time.
+- **SSRF Protection**: Allowlist (http/https only) + DNS resolution validation + private IP blocklist + DNS rebinding prevention (5min cache).
+- **Politeness**: Per-host delay (1200ms) + jitter (±30%) + robots.txt compliance + exponential backoff on 429/503.
+- **Rate Limiting**: Per-tenant sliding window (60 scrapes/min, 5 crawls/min) via Redis.
+- **Queue Isolation**: Horizon autoscaling with separate supervisors for crawl:http, crawl:chrome, crawl:store, cleanup.
+- **Octane Stability**: FrankenPHP with `--max-requests=500` worker recycling; flushed singletons prevent state leaks.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Features
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- **Request types**: `http` (fast), `chrome` (JS rendering), `smart` (auto-detect & fallback)
+- **Return formats**: `markdown`, `commonmark`, `raw`, `text`, `xml`, `bytes`, `empty`
+- **Storage policy**:
+  - Scrape: inline if ≤ 131KB, else presigned `content_url`; `bytes` always use `bytes_url`
+  - Crawl: always store to R2 (`content_r2_key`), presigned URLs in results API
+- **Metadata extraction**: title, description, links, images via Readability + Symfony DomCrawler
+- **PDF support**: extract text via `spatie/pdf-to-text`
+- **Idempotency**: `Idempotency-Key` header for crawl requests (24h TTL)
+- **Health endpoints**: `GET /health` (DB+Redis), `GET /ready` (queue+renderer)
 
-## Learning Laravel
+## Setup
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+### Requirements
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- PHP 8.2+
+- Composer
+- Docker + Docker Compose
+- Bun 1.0+ (for renderer)
+- PostgreSQL 16+
+- Redis 7+
 
-## Laravel Sponsors
+### Local Development (Docker-only)
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```bash
+# 1. Quick setup (migrations + dependencies)
+./setup.sh
 
-### Premium Partners
+# 2. Configure R2 credentials in .env
+# R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+# 3. Start all services
+docker-compose up -d
 
-## Contributing
+# 4. Access API
+# Via Caddy (recommended): http://localhost:8080
+# Direct to API (debugging): http://localhost:8000
+# Horizon dashboard: http://localhost:8080/horizon
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+**Note**: For local development, all services run in Docker. No need for separate terminals or host-based PHP commands.
 
-## Code of Conduct
+### Environment Variables (Defaults)
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```env
+# Database (Docker hostnames)
+DB_CONNECTION=pgsql
+DB_HOST=postgres
+DB_DATABASE=app
+DB_USERNAME=app
+DB_PASSWORD=app
 
-## Security Vulnerabilities
+# Redis (Docker hostname)
+REDIS_HOST=redis
+QUEUE_CONNECTION=redis
+CACHE_STORE=redis
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+# R2 Storage
+R2_ENDPOINT=https://<accountid>.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=<your-key>
+R2_SECRET_ACCESS_KEY=<your-secret>
+R2_BUCKET=<your-bucket>
+R2_REGION=auto
+PRESIGN_TTL_SECONDS=600          # Presigned URL TTL
+TMP_OBJECT_TTL_HOURS=24          # Cleanup threshold
+INLINE_TEXT_MAX_BYTES=131072     # 128KB (increase to 262144/524288/1048576 as needed)
+
+# Rate Limits
+RATE_LIMIT_SCRAPE_PER_MIN=60
+RATE_LIMIT_CRAWL_PER_MIN=5
+
+# Timeouts & Limits
+SCRAPE_HTTP_TIMEOUT_MS=8000
+SCRAPE_CHROME_TIMEOUT_MS=20000
+MAX_BYTES_DEFAULT=15000000       # 15MB
+MAX_SCRAPE_URLS_PER_REQUEST=10
+MAX_CRAWL_PAGES_HARD_CAP=1000
+MAX_CRAWL_RUNTIME_SECONDS=1800
+
+# Renderer
+RENDERER_BASE_URL=http://renderer:3001
+RENDERER_MAX_CONCURRENCY=2
+RENDERER_TIMEOUT_MS=20000
+
+# API Keys (comma-separated)
+API_KEYS=your-api-key-here
+```
+
+## API Examples
+
+### 1. Scrape (Small Markdown - Inline)
+
+```bash
+curl -X POST http://localhost:8000/api/v1/scrape \
+  -H "X-API-Key: your-api-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com",
+    "request": "smart",
+    "return_format": "markdown",
+    "metadata": true
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [{
+    "url": "https://example.com",
+    "final_url": "https://example.com/",
+    "success": true,
+    "status_code": 200,
+    "content_type": "text/html",
+    "request_used": "http",
+    "source_type": "html",
+    "content": "# Example Domain\n\nThis domain is for use in...",
+    "content_inline": true,
+    "content_url": null,
+    "content_expires_at": null,
+    "content_size": 1256,
+    "bytes_url": null,
+    "bytes_expires_at": null,
+    "bytes_size": null,
+    "bytes_sha256": null,
+    "metadata": {
+      "title": "Example Domain",
+      "description": "Example Domain"
+    },
+    "links": ["https://www.iana.org/domains/example"],
+    "images": [],
+    "timing_ms": {"total": 245, "fetch": 220, "render": null, "extract": 25},
+    "error": null
+  }]
+}
+```
+
+### 2. Scrape (Large Markdown - Presigned URL)
+
+```bash
+curl -X POST http://localhost:8000/api/v1/scrape \
+  -H "X-API-Key: your-api-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://en.wikipedia.org/wiki/Web_scraping",
+    "request": "http",
+    "return_format": "markdown"
+  }'
+```
+
+**Response (content > 131KB):**
+```json
+{
+  "success": true,
+  "data": [{
+    "url": "https://en.wikipedia.org/wiki/Web_scraping",
+    "success": true,
+    "content": "",
+    "content_inline": false,
+    "content_url": "https://<accountid>.r2.cloudflarestorage.com/tmp/env/scrape/content/<sha256>.txt?X-Amz-Algorithm=...",
+    "content_expires_at": "2026-02-03T10:15:00.000Z",
+    "content_size": 256000,
+    "timing_ms": {"total": 1820, "fetch": 1650, "extract": 170}
+  }]
+}
+```
+
+### 3. Scrape PDF (Bytes - Presigned URL)
+
+```bash
+curl -X POST http://localhost:8000/api/v1/scrape \
+  -H "X-API-Key: your-api-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+    "request": "http",
+    "return_format": "bytes"
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [{
+    "url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+    "success": true,
+    "source_type": "pdf",
+    "bytes_url": "https://<accountid>.r2.cloudflarestorage.com/tmp/env/scrape/bytes/<sha256>.pdf?X-Amz-Algorithm=...",
+    "bytes_expires_at": "2026-02-03T10:20:00.000Z",
+    "bytes_size": 13264,
+    "bytes_sha256": "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c"
+  }]
+}
+```
+
+### 4. Async Crawl (Start + Status + Results)
+
+**Start crawl:**
+```bash
+curl -X POST http://localhost:8000/api/v1/crawl \
+  -H "X-API-Key: your-api-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com",
+    "depth": 2,
+    "limit": 10,
+    "request": "smart",
+    "return_format": "markdown",
+    "same_domain_only": true,
+    "include_pdf": true,
+    "polite": {
+      "per_host_delay_ms": 1200,
+      "jitter_ratio": 0.3,
+      "concurrency": 3
+    }
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "job_id": "crawl_9c5e8a12-3456-7890-abcd-ef1234567890"
+}
+```
+
+**Check status:**
+```bash
+curl http://localhost:8000/api/v1/crawl/crawl_9c5e8a12-3456-7890-abcd-ef1234567890 \
+  -H "X-API-Key: your-api-key-here"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "job_id": "crawl_9c5e8a12-3456-7890-abcd-ef1234567890",
+    "status": "running",
+    "created_at": "2026-02-03T10:00:00.000Z",
+    "updated_at": "2026-02-03T10:01:30.000Z",
+    "canceled_at": null,
+    "error": null
+  }
+}
+```
+
+**Get results (cursor-based pagination):**
+```bash
+curl "http://localhost:8000/api/v1/crawl/crawl_9c5e8a12-3456-7890-abcd-ef1234567890/results?limit=5" \
+  -H "X-API-Key: your-api-key-here"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "url": "https://example.com",
+      "final_url": "https://example.com/",
+      "success": true,
+      "status_code": 200,
+      "content_type": "text/html",
+      "request_used": "http",
+      "source_type": "html",
+      "content": "",
+      "content_inline": false,
+      "content_url": "https://<accountid>.r2.cloudflarestorage.com/tmp/env/crawl_9c5e8a12.../content/<sha256>.txt?...",
+      "content_expires_at": "2026-02-03T10:15:00.000Z",
+      "content_size": 5420,
+      "bytes_url": null,
+      "bytes_size": null,
+      "bytes_sha256": null,
+      "metadata": {"title": "Example Domain", "description": "..."},
+      "links": ["https://www.iana.org/domains/example"],
+      "images": [],
+      "timing_ms": {"total": 312, "fetch": 280, "extract": 32},
+      "error": null
+    }
+  ],
+  "next_cursor": "eyJjcmVhdGVkX2F0IjoiMjAyNi0wMi0wM1QxMDowMTowMC4wMDBaIiwiaWQiOjV9"
+}
+```
+
+**Cancel crawl:**
+```bash
+curl -X DELETE http://localhost:8000/api/v1/crawl/crawl_9c5e8a12-3456-7890-abcd-ef1234567890 \
+  -H "X-API-Key: your-api-key-here"
+```
+
+## Performance & Scaling (100k/day)
+
+- **Octane + FrankenPHP**: `--workers=auto` uses CPU cores; `--max-requests=500` recycles workers every 500 requests to prevent memory leaks.
+- **Horizon Autoscaling**: Scales from 1–10 workers per queue based on load; tune `maxProcesses` per CPU/memory capacity.
+- **Renderer Concurrency**: `RENDERER_MAX_CONCURRENCY=2` (safe default); increase to 4–8 on multi-core with 4GB+ RAM.
+- **Rate Limits**: Adjust `RATE_LIMIT_SCRAPE_PER_MIN` and `RATE_LIMIT_CRAWL_PER_MIN` per tenant tier.
+- **R2 Presigned URLs**: 600s TTL (short-lived bearer tokens); clients should fetch content immediately after receiving URLs.
+- **Database**: Add read replicas for crawl results queries at scale; partition `crawl_results` by `job_id` for large crawls.
+- **Caching**: Redis for DNS results (5min), robots.txt (6–24h), politeness tracking, rate limits.
+
+## Testing
+
+```bash
+# Run all tests
+php artisan test
+
+# Run specific feature test
+php artisan test --filter=ScrapeControllerTest
+```
+
+## Monitoring
+
+- **Horizon Dashboard**: http://localhost:8000/horizon (queue depth, throughput, failed jobs)
+- **Health Endpoints**:
+  - `GET /health` - DB + Redis connectivity
+  - `GET /ready` - Queue workers + renderer reachability
+- **Logs**: Structured JSON logs to stdout (request_id, tenant_id, job_id, url, timings)
+
+## Security
+
+- **SSRF Protection**: Blocks private IPs (10.0.0.0/8, 127.0.0.0/8, 169.254.0.0/16, 192.168.0.0/16, etc.) and validates DNS resolution.
+- **Presigned URLs**: Short-lived (600s) bearer tokens; treat as secrets; do not log or expose in public responses.
+- **API Keys**: Store hashed in `tenants` table; fallback to `API_KEYS` env for bootstrap.
+- **Rate Limiting**: Per-tenant sliding window prevents abuse.
+- **Max Bytes**: Streaming cutoff prevents memory exhaustion from large responses.
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+MIT

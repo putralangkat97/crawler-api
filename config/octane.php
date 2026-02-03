@@ -135,7 +135,8 @@ return [
     ],
 
     'flush' => [
-        //
+        \Illuminate\Http\Client\Factory::class,
+        \App\Services\RendererClient::class,
     ],
 
     /*

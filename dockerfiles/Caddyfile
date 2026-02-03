@@ -1,17 +1,29 @@
+# Production domain (auto HTTPS)
 crawler.anggit.dev {
     encode gzip
 
-    # Redirect HTTP -> HTTPS
-    @http {
-        protocol http
-    }
-    redir @http https://{host}{uri} permanent
-
-    reverse_proxy app:8000 {
+    reverse_proxy laravel-api:8000 {
         header_up Host {host}
         header_up X-Real-IP {remote}
         header_up X-Forwarded-For {remote}
         header_up X-Forwarded-Proto {scheme}
+    }
+
+    handle /storage/* {
+        root * /app/public
+        file_server
+    }
+}
+
+# Local development (HTTP only, no TLS)
+http://localhost, http://127.0.0.1 {
+    encode gzip
+
+    reverse_proxy laravel-api:8000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto http
     }
 
     handle /storage/* {

@@ -18,7 +18,8 @@ RUN install-php-extensions \
     intl \
     zip \
     bcmath \
-    pcntl
+    pcntl \
+    redis
 
 RUN curl -sS https://getcomposer.org/installer \
     | php -- --install-dir=/usr/local/bin --filename=composer
@@ -34,4 +35,4 @@ RUN chown -R www-data:www-data storage bootstrap/cache database
 RUN php artisan config:clear && php artisan config:cache && php artisan route:cache
 
 EXPOSE 8000
-CMD ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]
+CMD ["php", "artisan", "octane:frankenphp", "--host=0.0.0.0", "--port=8000"]

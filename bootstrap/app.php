@@ -12,7 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->alias([
+            'api.key' => \App\Http\Middleware\ApiKeyAuth::class,
+            'tenant.rate' => \App\Http\Middleware\TenantRateLimit::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

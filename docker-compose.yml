@@ -1,22 +1,64 @@
 services:
-  app:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  laravel-api:
     build: .
     restart: unless-stopped
+    ports:
+      - "8000:8000"
     volumes:
       - ./storage:/app/storage
       - ./database:/app/database
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
-      CACHE_DRIVER: file
-      SESSION_DRIVER: file
+      CACHE_DRIVER: redis
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: redis
       TRUSTED_PROXIES: 0.0.0.0/0
+    depends_on:
+      - postgres
+      - redis
+
+  horizon:
+    build: .
+    restart: unless-stopped
+    command: php artisan horizon
+    depends_on:
+      - redis
+      - postgres
+
+  renderer:
+    build: ./renderer
+    restart: unless-stopped
+    environment:
+      RENDERER_PORT: 3001
+      RENDERER_MAX_CONCURRENCY: 2
+      RENDERER_TIMEOUT_MS: 20000
+    ports:
+      - "3001:3001"
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "8080:80"  # Changed to avoid conflict with host nginx
       - "443:443"
     volumes:
       - ./dockerfiles/Caddyfile:/etc/caddy/Caddyfile
@@ -24,8 +66,9 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - app
+      - laravel-api
 
 volumes:
   caddy_data:
   caddy_config:
+  pgdata:

@@ -3,42 +3,41 @@
 namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
-use App\Services\SpiderCrawler;
-use Illuminate\Http\Request;
+use App\Http\Requests\ScrapeRequest;
+use App\Services\ScrapeService;
 
 class ScrapeController extends Controller
 {
-    public function __invoke(Request $request, SpiderCrawler $crawler)
+    public function __invoke(ScrapeRequest $request, ScrapeService $scrapeService)
     {
-        $validated = $request->validate([
-            'url' => 'required|string|url',
-            'request' => 'sometimes|string|in:http,chrome,smart',
-            'return_format' => 'sometimes|string|in:markdown,commonmark,raw,text,bytes,empty',
-            'metadata' => 'sometimes|boolean',
-            'scroll' => 'sometimes|integer|min:0|max:30000',
-            'wait_for' => 'sometimes|string|max:500',
-            'session' => 'sometimes|boolean',
-            'cache' => 'sometimes|boolean',
-            'cache_ttl' => 'sometimes|integer|min:0|max:86400',
-        ]);
-
-        // Set defaults
+        $validated = $request->validated();
         $options = [
             'request' => $validated['request'] ?? 'smart',
             'return_format' => $validated['return_format'] ?? 'markdown',
-            'metadata' => $validated['metadata'] ?? true,
-            'scroll' => $validated['scroll'] ?? null,
-            'wait_for' => $validated['wait_for'] ?? null,
+            'metadata' => $validated['metadata'] ?? false,
+            'scroll' => $validated['scroll'] ?? 0,
+            'wait_for' => $validated['wait_for'] ?? [],
             'session' => $validated['session'] ?? false,
-            'cache' => $validated['cache'] ?? true,
-            'cache_ttl' => $validated['cache_ttl'] ?? config('scraper.cache_ttl', 3600),
+            'timeout_ms' => $validated['timeout_ms'] ?? config('scraper.scrape_http_timeout_ms'),
+            'max_bytes' => $validated['max_bytes'] ?? config('scraper.max_bytes_default'),
         ];
 
-        $result = $crawler->scrapePage($validated['url'], $options);
+        if ($options['request'] === 'http' && (! empty($options['scroll']) || ! empty($options['wait_for']))) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'INVALID_REQUEST', 'message' => 'scroll and wait_for require chrome'],
+            ], 422);
+        }
+
+        $urls = is_array($validated['url']) ? $validated['url'] : [$validated['url']];
+        $urls = array_slice($urls, 0, (int) config('scraper.max_scrape_urls_per_request'));
+
+        $tenant = $request->attributes->get('tenant');
+        $results = $scrapeService->scrape($urls, $options, $tenant->tenant_id);
 
         return response()->json([
             'success' => true,
-            'data' => $result,
+            'data' => $results,
         ]);
     }
 }
